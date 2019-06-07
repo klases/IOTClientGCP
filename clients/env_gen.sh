@@ -1,0 +1,7 @@
+export IOTCORE_PROJECT="atkiotcore"
+export CHANNEL_NAME="iot-demo"
+export IOTCORE_REGISTRY="iot_device_raspberry_pi_sensors"
+export IOTCORE_DEVICE="claes_test_iod"
+export IOTCORE_REGION="europe-west1"
+export IOTCORE_TOPIC_DATA="iot_device_telematics"
+export IOTCORE_TOPIC_DEVICE="iot_device_state"
