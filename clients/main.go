@@ -13,6 +13,7 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -135,7 +136,10 @@ func makeEvent() string {
 
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
-
+	uuidV4, err := uuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
 	event := struct {
 		SourceID string  `json:"source_id"`
 		EventID  string  `json:"event_id"`
@@ -143,8 +147,8 @@ func makeEvent() string {
 		Metric   float32 `json:"metric"`
 	}{
 		SourceID: *eventSrc,
-		//EventID:  fmt.Sprintf("%s-%s", idPrefix, uuid.NewV4().String(),
-		EventID: fmt.Sprintf("%s-%s", idPrefix, "57be638d-7d51-4d8c-b653-2439b8cb5651"),
+		EventID:  fmt.Sprintf("%s-%s", idPrefix, uuidV4.String()),
+		//EventID: fmt.Sprintf("%s-%s", idPrefix, "57be638d-7d51-4d8c-b653-2439b8cb5651"),
 		EventTs: time.Now().UTC().Unix(),
 		Metric:  r1.Float32(),
 	}
