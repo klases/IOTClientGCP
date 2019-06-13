@@ -28,6 +28,12 @@ gcloud iot devices create $IOTCORE_DEVICE \
   --public-key path=./device.crt.pem,type=rsa-x509-pem
 ```
 
+## Download dependencies
+```
+go get github.com/dgrijalva/jwt-go
+go get github.com/eclipse/paho.mqtt.golang
+```
+
 ## Run
 
 ```
