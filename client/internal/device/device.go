@@ -93,7 +93,10 @@ func (dev *device) GetFullDeviceName() string {
 func (dev *device) InitDevice() {
 	client := dev.setupMqttClient()
 	dev.client = client
-	dev.connectDevice()
+	err := dev.connectDevice()
+	if err != nil {
+		log.Fatalln("Device:", *dev.DeviceID(), "could not connect, exited with error:", err)
+	}
 	dev.subscribeToConfigTopic()
 
 }
