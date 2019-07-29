@@ -22,11 +22,9 @@ type Device interface {
 	// and creates the google path for the device.
 	GetFullDeviceName() string
 	// LoadPrivateKey load a privatekey and return it
-	LoadPrivateKey(*string) *rsa.PrivateKey
-	// InitDevice init a new device
-	InitDevice()
-	// SetPrivateKey
-	SetPrivateKey(*rsa.PrivateKey)
+	//LoadPrivateKey(*string) *rsa.PrivateKey
+	//	// InitDevice init a new device
+	//	InitDevice()
 	// Disconnect the device
 	SendEvent(*Event, string) error
 	DeviceID() *string
@@ -34,7 +32,9 @@ type Device interface {
 	ConfigQ() *chan string
 	// Buffer for event recived from "/devices/{deviceID}/command" topic
 	CmdQ() *chan string
+	SubscribeToConfigTopic()
 	Disconnect()
+	Connect() error
 }
 
 type device struct {
@@ -46,6 +46,7 @@ type device struct {
 	client     MQTT.Client
 	configQ    chan string
 	cmdQ       chan string
+	certsCA    string
 }
 
 const (
@@ -56,16 +57,22 @@ const (
 )
 
 // NewDevice constructor for device
-func NewDevice(deviceID string, regionID string, projectID string, registry string) Device {
-
+func NewDevice(deviceID string, regionID string, projectID string, registry string, certsCA string, key string) Device {
+	log.Printf("Creating Device %s:", deviceID)
 	dev := &device{deviceID: deviceID,
 		regionID:  regionID,
 		projectID: projectID,
 		registry:  registry,
+		certsCA:   certsCA,
 	}
 
 	dev.configQ = make(chan string, 10)
 	dev.cmdQ = make(chan string, 10)
+
+	dev.privateKey = dev.loadPrivateKey(&key)
+
+	client := dev.setupMqttClient()
+	dev.client = client
 	return dev
 
 }
@@ -90,17 +97,6 @@ func (dev *device) GetFullDeviceName() string {
 		dev.deviceID)
 }
 
-func (dev *device) InitDevice() {
-	client := dev.setupMqttClient()
-	dev.client = client
-	err := dev.connectDevice()
-	if err != nil {
-		log.Fatalln("Device:", *dev.DeviceID(), "could not connect, exited with error:", err)
-	}
-	dev.subscribeToConfigTopic()
-
-}
-
 func (dev *device) Disconnect() {
 	if dev.client.IsConnected() == true {
 		msg := fmt.Sprintf("Disconnect device: %s", dev.deviceID)
@@ -109,17 +105,16 @@ func (dev *device) Disconnect() {
 
 }
 
-func (dev *device) connectDevice() error {
+func (dev *device) Connect() error {
 	log.Printf("Connecting device: %s", dev.deviceID)
 	if token := dev.client.Connect(); token.Wait() && token.Error() != nil {
-		log.Println(token.Error())
+		log.Println("Device:", *dev.DeviceID(), "could not connect, exited with error:", token.Error())
 		return token.Error()
 	}
-	// Sleep for 5 seconds to allow attachDevice message to propagate.
 	return nil
 }
 
-func (dev *device) LoadPrivateKey(privateKey *string) *rsa.PrivateKey {
+func (dev *device) loadPrivateKey(privateKey *string) *rsa.PrivateKey {
 	log.Println("Loading private key")
 	keyBytes, err := ioutil.ReadFile(*privateKey)
 	if err != nil {
@@ -131,10 +126,6 @@ func (dev *device) LoadPrivateKey(privateKey *string) *rsa.PrivateKey {
 		log.Fatal(err)
 	}
 	return key
-}
-
-func (dev *device) SetPrivateKey(privateKey *rsa.PrivateKey) {
-	dev.privateKey = privateKey
 }
 
 // setupMqttClient creates and configures a mqtt client
@@ -193,7 +184,7 @@ func (dev *device) signToken(token *jwt.Token) string {
 
 func (dev *device) createTLSConfig() *tls.Config {
 	certpool := x509.NewCertPool()
-	pemCerts, err := ioutil.ReadFile(certsCA)
+	pemCerts, err := ioutil.ReadFile(dev.certsCA)
 	if err == nil {
 		certpool.AppendCertsFromPEM(pemCerts)
 	}
@@ -234,25 +225,23 @@ func (dev *device) subscribeToTopic(topic string, messageHandler MQTT.MessageHan
 	}
 
 	for {
-		// subscribe the topic, "#" means all topics
-		//token := dev.client.Subscribe("#", byte(0), onIncomingDataReceived(dev.client MQTT.Client, msg MQTT.Message)
+		// subscribe the topic, "#" wildcard topic
 		token := dev.client.Subscribe(topic, 0, messageHandler)
 		if token.Wait() && token.Error() != nil {
 			log.Println("Fail to sub... ", token.Error())
 			time.Sleep(5 * time.Second)
 
-			log.Println("Retry to subscribe")
+			log.Printf("Retry to subscribe to topic: %s", topic)
 			continue
 		} else {
-			log.Printf("Subscribe successful!")
+			log.Printf("Subscribe successfult to topic: %s", topic)
 			break
 		}
 	}
 }
 
-func (dev *device) subscribeToConfigTopic() {
+func (dev *device) SubscribeToConfigTopic() {
 	topic := fmt.Sprintf("/devices/%s/config", *dev.DeviceID())
-	//dev.subscribeToTopic(topic, dev.onConfigReceived)
 	dev.subscribeToTopic(topic, func(client mqtt.Client, msg mqtt.Message) {
 		log.Printf(msg.Topic(), " ", string(msg.Payload()))
 		dev.configQ <- string(msg.Payload())
@@ -261,7 +250,6 @@ func (dev *device) subscribeToConfigTopic() {
 
 func (dev *device) subscribeToCmdTopic() {
 	topic := fmt.Sprintf("/devices/%s/commands/#", *dev.DeviceID())
-	//dev.subscribeToTopic(topic, dev.onCmdReceived)
 	dev.subscribeToTopic(topic, func(client mqtt.Client, msg mqtt.Message) {
 		log.Printf(msg.Topic(), " ", string(msg.Payload()))
 		dev.cmdQ <- string(msg.Payload())
