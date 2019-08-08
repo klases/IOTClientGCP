@@ -20,7 +20,7 @@ type Event struct {
 
 // StatusEvent for sending basic device status
 type StatusEvent struct {
-	Event
+	Event `json:"event"`
 }
 
 // NewEvent bla

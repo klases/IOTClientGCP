@@ -11,7 +11,6 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 //TODO: Subscribe to commands topic and add to buffered channel
@@ -21,17 +20,15 @@ type Device interface {
 	// GetFullDeviceName, concatenate deviceID, regionID, projectID and registry
 	// and creates the google path for the device.
 	GetFullDeviceName() string
-	// LoadPrivateKey load a privatekey and return it
-	//LoadPrivateKey(*string) *rsa.PrivateKey
-	//	// InitDevice init a new device
-	//	InitDevice()
 	// Disconnect the device
 	SendEvent(*Event, string) error
 	DeviceID() *string
 	// Buffer for event recived from "/devices/{deviceID}/config" topic
-	ConfigQ() *chan string
+	//	ConfigQ() *chan string
 	// Buffer for event recived from "/devices/{deviceID}/command" topic
 	CmdQ() *chan string
+	// SubscribeToConfigTopic subscribes the device to the  Config topic in google IOT core
+	// https://cloud.google.com/iot/docs/how-tos/config/configuring-devices
 	SubscribeToConfigTopic()
 	Disconnect()
 	Connect() error
@@ -44,9 +41,9 @@ type device struct {
 	registry   string
 	privateKey *rsa.PrivateKey
 	client     MQTT.Client
-	configQ    chan string
 	cmdQ       chan string
 	certsCA    string
+	config     Configuration
 }
 
 const (
@@ -64,11 +61,10 @@ func NewDevice(deviceID string, regionID string, projectID string, registry stri
 		projectID: projectID,
 		registry:  registry,
 		certsCA:   certsCA,
+		config:    Configuration{},
 	}
 
-	dev.configQ = make(chan string, 10)
 	dev.cmdQ = make(chan string, 10)
-
 	dev.privateKey = dev.loadPrivateKey(&key)
 
 	client := dev.setupMqttClient()
@@ -79,10 +75,6 @@ func NewDevice(deviceID string, regionID string, projectID string, registry stri
 
 func (dev *device) DeviceID() *string {
 	return &dev.deviceID
-}
-
-func (dev *device) ConfigQ() *chan string {
-	return &dev.configQ
 }
 
 func (dev *device) CmdQ() *chan string {
@@ -242,20 +234,19 @@ func (dev *device) subscribeToTopic(topic string, messageHandler MQTT.MessageHan
 
 func (dev *device) SubscribeToConfigTopic() {
 	topic := fmt.Sprintf("/devices/%s/config", *dev.DeviceID())
-	dev.subscribeToTopic(topic, func(client mqtt.Client, msg mqtt.Message) {
-		log.Printf(msg.Topic(), " ", string(msg.Payload()))
-		dev.configQ <- string(msg.Payload())
+	dev.subscribeToTopic(topic, func(client MQTT.Client, msg MQTT.Message) {
+		dev.config.UpdateConfig(msg)
 	})
 }
 
 func (dev *device) subscribeToCmdTopic() {
 	topic := fmt.Sprintf("/devices/%s/commands/#", *dev.DeviceID())
-	dev.subscribeToTopic(topic, func(client mqtt.Client, msg mqtt.Message) {
+	dev.subscribeToTopic(topic, func(client MQTT.Client, msg MQTT.Message) {
 		log.Printf(msg.Topic(), " ", string(msg.Payload()))
 		dev.cmdQ <- string(msg.Payload())
 	})
 }
 
-func onIncomingDataReceivedDefault(client mqtt.Client, message mqtt.Message) {
+func onIncomingDataReceivedDefault(client MQTT.Client, message MQTT.Message) {
 	log.Printf(message.Topic(), " ", string(message.Payload()))
 }
