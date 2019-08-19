@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/csv"
 	"flag"
 	"fmt"
 	"log"
-	"time"
+	"os"
+	"sync"
 
 	device "github.com/klases/IOTClientGCP/client/internal/device"
 )
@@ -26,6 +28,7 @@ func main() {
 
 	d := device.NewDevice(*deviceID, *region, *projectID, *registryID, *certsCA, *privateKey)
 	err := d.Connect()
+	defer d.Disconnect()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,11 +36,51 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for i := 0; i < *numEvents; i++ {
-		event := device.NewEvent(eventSrc)
-		topic := fmt.Sprintf("/devices/%s/events", *d.DeviceID())
-		d.SendEvent(event, topic)
-		time.Sleep(30 * time.Second)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	err = sendAirData(&wg, fmt.Sprintf("/devices/%s/events", *d.DeviceID()), d)
+	if err != nil {
+		log.Fatal(err)
 	}
-	d.Disconnect()
+	wg.Wait()
+}
+
+// Send AirDatra from file airData
+func sendAirData(wg *sync.WaitGroup, topic string, d device.Device) error {
+	f, err := os.Open("airData")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer f.Close()
+
+	lines, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	header := lines[0]
+	lines = lines[1:]
+	fmt.Println(header)
+	for _, line := range lines {
+		m := createLineToMap(line, header)
+		event := device.NewEvent(eventSrc)
+		event.Data = m
+		d.SendEvent(event, topic)
+		//time.Sleep(1 * time.Second)
+	}
+	wg.Done()
+	return err
+}
+
+// Line of the cvs to a map
+func createLineToMap(line []string, header []string) map[string]string {
+	m := make(map[string]string)
+	for _, head := range header {
+		for _, value := range line {
+
+			m[head] = value
+		}
+
+	}
+	return m
 }

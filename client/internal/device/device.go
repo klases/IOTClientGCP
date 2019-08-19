@@ -205,7 +205,7 @@ func (dev *device) SendEvent(event *Event, topic string) error {
 		fmt.Printf("Error publishing: %s", token.Error())
 		return token.Error()
 	}
-	log.Println("sent event", event)
+	log.Println("sent event", event.ToJSONString())
 	return nil
 }
 
