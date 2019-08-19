@@ -29,7 +29,7 @@ type Device interface {
 	CmdQ() *chan string
 	// SubscribeToConfigTopic subscribes the device to the  Config topic in google IOT core
 	// https://cloud.google.com/iot/docs/how-tos/config/configuring-devices
-	SubscribeToConfigTopic()
+	SubscribeToConfigTopic() error
 	Disconnect()
 	Connect() error
 }
@@ -211,14 +211,14 @@ func (dev *device) SendEvent(event *Event, topic string) error {
 
 // subscribeToTopic rakes the topic and a messageHandler function.
 // If nil is provided instead of a messageHandler the default vill be used.
-func (dev *device) subscribeToTopic(topic string, messageHandler MQTT.MessageHandler) {
+func (dev *device) subscribeToTopic(topic string, messageHandler MQTT.MessageHandler) error {
 	if messageHandler == nil {
 		messageHandler = onIncomingDataReceivedDefault
 	}
-
-	for {
+	var token MQTT.Token
+	for i := 0; i < 3; i++ {
 		// subscribe the topic, "#" wildcard topic
-		token := dev.client.Subscribe(topic, 0, messageHandler)
+		token = dev.client.Subscribe(topic, 0, messageHandler)
 		if token.Wait() && token.Error() != nil {
 			log.Println("Fail to sub... ", token.Error())
 			time.Sleep(5 * time.Second)
@@ -230,21 +230,24 @@ func (dev *device) subscribeToTopic(topic string, messageHandler MQTT.MessageHan
 			break
 		}
 	}
+	return token.Error()
 }
 
-func (dev *device) SubscribeToConfigTopic() {
+func (dev *device) SubscribeToConfigTopic() error {
 	topic := fmt.Sprintf("/devices/%s/config", *dev.DeviceID())
-	dev.subscribeToTopic(topic, func(client MQTT.Client, msg MQTT.Message) {
+	err := dev.subscribeToTopic(topic, func(client MQTT.Client, msg MQTT.Message) {
 		dev.config.UpdateConfig(msg)
 	})
+	return err
 }
 
-func (dev *device) subscribeToCmdTopic() {
+func (dev *device) subscribeToCmdTopic() error {
 	topic := fmt.Sprintf("/devices/%s/commands/#", *dev.DeviceID())
-	dev.subscribeToTopic(topic, func(client MQTT.Client, msg MQTT.Message) {
+	err := dev.subscribeToTopic(topic, func(client MQTT.Client, msg MQTT.Message) {
 		log.Printf(msg.Topic(), " ", string(msg.Payload()))
 		dev.cmdQ <- string(msg.Payload())
 	})
+	return err
 }
 
 func onIncomingDataReceivedDefault(client MQTT.Client, message MQTT.Message) {

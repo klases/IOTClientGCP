@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"time"
 
 	device "github.com/klases/IOTClientGCP/client/internal/device"
@@ -24,9 +25,14 @@ func main() {
 	flag.Parse()
 
 	d := device.NewDevice(*deviceID, *region, *projectID, *registryID, *certsCA, *privateKey)
-	d.Connect()
-	d.SubscribeToConfigTopic()
-
+	err := d.Connect()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = d.SubscribeToConfigTopic()
+	if err != nil {
+		log.Fatal(err)
+	}
 	for i := 0; i < *numEvents; i++ {
 		event := device.NewEvent(eventSrc)
 		topic := fmt.Sprintf("/devices/%s/events", *d.DeviceID())
